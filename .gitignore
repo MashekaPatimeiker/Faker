@@ -1,0 +1,17 @@
+﻿## .NET Core
+bin/
+obj/
+*.user
+*.suo
+
+## Visual Studio
+.vs/
+.vscode/
+.idea/
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/

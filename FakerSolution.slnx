@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="FakerConsole/FakerConsole.csproj" />
+  <Project Path="FakerLib/FakerLib.csproj" />
+  <Project Path="FakerTests/FakerTests.csproj" />
+</Solution>
