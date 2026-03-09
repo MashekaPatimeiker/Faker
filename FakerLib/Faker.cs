@@ -1,4 +1,6 @@
-﻿namespace FakerLib;
+﻿using FakerLib;
+
+namespace FakerLib;
 
 public class Faker : IFaker
 {

@@ -6,12 +6,14 @@ public class ObjectCreator
 {
     private readonly GeneratorRegistry _registry;
     private readonly Random _random;
+    private readonly ExtendedGeneratorRegistry? _extendedRegistry;
     private readonly HashSet<int> _objectsInCreation = new();
 
     public ObjectCreator(GeneratorRegistry registry, Random random)
     {
         _registry = registry;
         _random = random;
+        _extendedRegistry = registry as ExtendedGeneratorRegistry;
     }
 
     public object CreateObject(Type type, IFaker faker, int recursionDepth = 0)
@@ -27,7 +29,7 @@ public class ObjectCreator
 
         try
         {
-            if (_registry.CanGenerate(type))
+            if (IsSimpleType(type))
             {
                 var context = new GeneratorContext(_random, faker, type);
                 var result = _registry.GenerateValue(type, context);
@@ -35,33 +37,8 @@ public class ObjectCreator
                 return result;
             }
 
-            object? obj = null;
-
-            var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                .OrderByDescending(c => c.GetParameters().Length)
-                .ToArray();
-
-            foreach (var constructor in constructors)
-            {
-                try
-                {
-                    var parameters = constructor.GetParameters();
-                    var parameterValues = new object[parameters.Length];
-
-                    for (int i = 0; i < parameters.Length; i++)
-                    {
-                        parameterValues[i] = faker.Create(parameters[i].ParameterType);
-                    }
-
-                    obj = constructor.Invoke(parameterValues);
-                    break;
-                }
-                catch
-                {
-                    continue;
-                }
-            }
-
+            object? obj = CreateInstanceWithCustomGenerators(type, faker, recursionDepth);
+            
             if (obj == null)
             {
                 try
@@ -77,8 +54,7 @@ public class ObjectCreator
 
             if (obj != null)
             {
-                // Заполняем поля и свойства
-                FillMembers(obj, type, faker);
+                FillPropertiesWithCustomGenerators(obj, type, faker);
             }
 
             _objectsInCreation.Remove(typeHash);
@@ -91,23 +67,105 @@ public class ObjectCreator
         }
     }
 
-    private void FillMembers(object obj, Type type, IFaker faker)
+    private object? CreateInstanceWithCustomGenerators(Type type, IFaker faker, int recursionDepth)
+    {
+        var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+            .OrderByDescending(c => c.GetParameters().Length)
+            .ToArray();
+
+        foreach (var constructor in constructors)
+        {
+            try
+            {
+                var parameters = constructor.GetParameters();
+                var parameterValues = new object[parameters.Length];
+
+                for (int i = 0; i < parameters.Length; i++)
+                {
+                    var param = parameters[i];
+                    
+                    object? customValue = TryGetCustomGeneratorValue(type, param, faker);
+                    
+                    if (customValue != null)
+                    {
+                        parameterValues[i] = customValue;
+                    }
+                    else
+                    {
+                        parameterValues[i] = faker.Create(param.ParameterType);
+                    }
+                }
+
+                return constructor.Invoke(parameterValues);
+            }
+            catch
+            {
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    private object? TryGetCustomGeneratorValue(Type type, ParameterInfo param, IFaker faker)
+    {
+        if (_extendedRegistry == null || param.Name == null)
+            return null;
+
+        var directMatch = _extendedRegistry.GenerateForMember(type, param.Name, 
+            new GeneratorContext(_random, faker, param.ParameterType));
+    
+        if (directMatch != null)
+            return directMatch;
+
+        var pascalName = char.ToUpperInvariant(param.Name[0]) + param.Name.Substring(1);
+        var pascalMatch = _extendedRegistry.GenerateForMember(type, pascalName, 
+            new GeneratorContext(_random, faker, param.ParameterType));
+    
+        if (pascalMatch != null)
+            return pascalMatch;
+
+        var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+        foreach (var prop in properties)
+        {
+            if (string.Equals(prop.Name, param.Name, StringComparison.OrdinalIgnoreCase))
+            {
+                var propMatch = _extendedRegistry.GenerateForMember(type, prop.Name, 
+                    new GeneratorContext(_random, faker, param.ParameterType));
+            
+                if (propMatch != null)
+                    return propMatch;
+            }
+        }
+
+        return null;
+    }
+
+    private void FillPropertiesWithCustomGenerators(object obj, Type type, IFaker faker)
     {
         var fields = type.GetFields(BindingFlags.Public | BindingFlags.Instance);
         foreach (var field in fields)
         {
-            if (!field.IsInitOnly && !field.IsLiteral)
+            if (field.IsInitOnly || field.IsLiteral) continue;
+
+            try
             {
-                try
+                object? value = null;
+                
+                if (_extendedRegistry != null)
                 {
-                    var value = faker.Create(field.FieldType);
-                    field.SetValue(obj, value);
+                    value = _extendedRegistry.GenerateForMember(type, field.Name, 
+                        new GeneratorContext(_random, faker, field.FieldType));
                 }
-                catch
+                
+                if (value == null)
                 {
-                    //gay
+                    value = faker.Create(field.FieldType);
                 }
+                
+                field.SetValue(obj, value);
             }
+            catch { }
         }
 
         var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
@@ -117,14 +175,33 @@ public class ObjectCreator
         {
             try
             {
-                var value = faker.Create(property.PropertyType);
+                object? value = null;
+                
+                if (_extendedRegistry != null)
+                {
+                    value = _extendedRegistry.GenerateForMember(type, property.Name, 
+                        new GeneratorContext(_random, faker, property.PropertyType));
+                }
+                
+                if (value == null)
+                {
+                    value = faker.Create(property.PropertyType);
+                }
+                
                 property.SetValue(obj, value);
             }
-            catch
-            {
-                // gay
-            }
+            catch { }
         }
+    }
+
+    private bool IsSimpleType(Type type)
+    {
+        return type.IsPrimitive || 
+               type == typeof(string) || 
+               type == typeof(DateTime) || 
+               type == typeof(Guid) ||
+               type == typeof(decimal) ||
+               type.IsEnum;
     }
 
     private object GetDefaultValue(Type type)

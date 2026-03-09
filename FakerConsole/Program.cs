@@ -10,56 +10,56 @@ class Program
         Console.OutputEncoding = Encoding.UTF8;
         
         var faker = new Faker();
+        var regularUser = faker.Create<User>();
         
-        PrintValue("int", faker.Create<int>());
-        PrintValue("long", faker.Create<long>());
-        PrintValue("double", faker.Create<double>());
-        PrintValue("string", faker.Create<string>());
-        PrintValue("bool", faker.Create<bool>());
-        PrintValue("DateTime", faker.Create<DateTime>());
-        PrintValue("Guid", faker.Create<Guid>());
+        Console.WriteLine($"Id: {regularUser.Id}");
+        Console.WriteLine($"Name: {regularUser.Name}");
+        Console.WriteLine($"Age: {regularUser.Age}");
+        Console.WriteLine($"Email: {regularUser.Email}");
+        Console.WriteLine($"Created: {regularUser.CreatedDate:yyyy-MM-dd}");
+        Console.WriteLine($"Active: {regularUser.IsActive}");
         
-        try
-        {
-            var intList = faker.Create<List<int>>();
-            Console.WriteLine($"   List<int> ({intList?.Count ?? 0} элементов): [{string.Join(", ", intList ?? new List<int>())}]");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"   Ошибка создания List<int>: {ex.Message}");
-        }
+        var config = new FakerConfig();
+        config.Add<User, string, CityGenerator>(u => u.Name);
+        config.Add<User, int, AdultAgeGenerator>(u => u.Age);
+        config.Add<User, string, EmailGenerator>(u => u.Email);
         
-        try
-        {
-            var stringArray = faker.Create<string[]>();
-            Console.WriteLine($"   string[] ({stringArray?.Length ?? 0} элементов): [{string.Join(", ", stringArray ?? new string[0])}]");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"   Ошибка создания string[]: {ex.Message}");
-        }
+        var configuredFaker = new Faker(config);
+        var configuredUser = configuredFaker.Create<User>();
         
-        try
-        {
-            var user = faker.Create<User>();
-            if (user != null)
-            {
-                Console.WriteLine($"   User: Id={user.Id}, Name=\"{user.Name ?? "null"}\", Age={user.Age}, " +
-                                 $"Email=\"{user.Email ?? "null"}\", Created={user.CreatedDate:yyyy-MM-dd}, Active={user.IsActive}");
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"   Ошибка создания User: {ex.Message}");
-        }
-    }
-
-    static void PrintValue(string name, object value)
-    {
-        string stringValue = value?.ToString() ?? "null";
-        if (value is string)
-            stringValue = $"\"{stringValue}\"";
-        Console.WriteLine($"   {name}: {stringValue}");
+        Console.WriteLine($"Id: {configuredUser.Id}");
+        Console.WriteLine($"Name: {configuredUser.Name}");
+        Console.WriteLine($"Age: {configuredUser.Age}");
+        Console.WriteLine($"Email: {configuredUser.Email}");
+        Console.WriteLine($"Created: {configuredUser.CreatedDate:yyyy-MM-dd}");
+        Console.WriteLine($"Active: {configuredUser.IsActive}");
+        
+        var personConfig = new FakerConfig();
+        personConfig.Add<ImmutablePerson, string, CityGenerator>(p => p.Name);
+        
+        var personFaker = new Faker(personConfig);
+        var person = personFaker.Create<ImmutablePerson>();
+        
+        Console.WriteLine($"Name: {person.Name}");
+        
+        var dateConfig = new FakerConfig();
+        dateConfig.Add<Event, DateTime, PastDateGenerator>(e => e.EventDate);
+        dateConfig.Add<Event, string, CityGenerator>(e => e.Location);
+        
+        var dateFaker = new Faker(dateConfig);
+        var event_ = dateFaker.Create<Event>();
+        
+        Console.WriteLine($"Name: {event_.Name}");
+        Console.WriteLine($"EventDate: {event_.EventDate:yyyy-MM-dd}");
+        Console.WriteLine($"Location: {event_.Location}");
+        
+        var mixedConfig = new FakerConfig();
+        mixedConfig.Add<MixedCasePerson, string, CityGenerator>(p => p.FullName);
+        
+        var mixedFaker = new Faker(mixedConfig);
+        var mixedPerson = mixedFaker.Create<MixedCasePerson>();
+        
+        Console.WriteLine($"FullName: {mixedPerson.FullName}");
     }
 }
 
@@ -71,4 +71,74 @@ public class User
     public string? Email { get; set; }
     public DateTime CreatedDate { get; set; }
     public bool IsActive { get; set; }
+}
+
+public class ImmutablePerson
+{
+    public string Name { get; }
+    public ImmutablePerson(string name) => Name = name;
+}
+
+public class MixedCasePerson
+{
+    public string FullName { get; }
+    public MixedCasePerson(string fullName) => FullName = fullName;
+}
+
+public class Event
+{
+    public string? Name { get; set; }
+    public DateTime EventDate { get; set; }
+    public string? Location { get; set; }
+}
+
+public class CityGenerator : IValueGenerator
+{
+    private readonly string[] _cities = { 
+        "Moscow", "London", "Paris", "Berlin", "Tokyo", 
+        "New York", "Sydney", "Rome", "Madrid", "Kyiv",
+        "Amsterdam", "Barcelona", "Prague", "Vienna", "Lisbon"
+    };
+    
+    public object Generate(Type typeToGenerate, GeneratorContext context) =>
+        _cities[context.Random.Next(_cities.Length)];
+
+    public bool CanGenerate(Type type) => type == typeof(string);
+}
+
+public class AdultAgeGenerator : IValueGenerator
+{
+    public object Generate(Type typeToGenerate, GeneratorContext context) =>
+        context.Random.Next(18, 66);
+
+    public bool CanGenerate(Type type) => type == typeof(int);
+}
+
+public class EmailGenerator : IValueGenerator
+{
+    private readonly string[] _domains = { "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "gayr.net" };
+    
+    public object Generate(Type typeToGenerate, GeneratorContext context)
+    {
+        var name = GenerateRandomString(context.Random, context.Random.Next(5, 10));
+        var domain = _domains[context.Random.Next(_domains.Length)];
+        return $"{name}@{domain}";
+    }
+
+    private string GenerateRandomString(Random random, int length)
+    {
+        const string chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+        return new string(Enumerable.Repeat(chars, length)
+            .Select(s => s[random.Next(s.Length)]).ToArray());
+    }
+
+    public bool CanGenerate(Type type) => type == typeof(string);
+}
+
+public class PastDateGenerator : IValueGenerator
+{
+    public object Generate(Type typeToGenerate, GeneratorContext context) =>
+        DateTime.Now.AddDays(-context.Random.Next(1, 1000));
+
+    public bool CanGenerate(Type type) => type == typeof(DateTime);
 }
