@@ -9,7 +9,6 @@ public class GeneratorRegistry
 
     public GeneratorRegistry()
     {
-        // Регистрируем все генераторы явно
         RegisterGenerator(new IntGenerator());
         RegisterGenerator(new LongGenerator());
         RegisterGenerator(new DoubleGenerator());
@@ -22,13 +21,11 @@ public class GeneratorRegistry
         RegisterGenerator(new CharGenerator());
         RegisterGenerator(new ByteGenerator());
         
-        // Регистрируем генератор коллекций в baseGenerators
         _baseGenerators.Add(new CollectionGenerator());
     }
 
     private void RegisterGenerator(IValueGenerator generator)
     {
-        // Для простых типов добавляем в словарь
         var types = AppDomain.CurrentDomain.GetAssemblies()
             .SelectMany(a => a.GetTypes())
             .Where(t => generator.CanGenerate(t));
@@ -52,13 +49,11 @@ public class GeneratorRegistry
 
     public object GenerateValue(Type type, GeneratorContext context)
     {
-        // Сначала проверяем точное соответствие
         if (_generators.TryGetValue(type, out var generator))
         {
             return generator.Generate(type, context);
         }
 
-        // Затем проверяем базовые генераторы
         foreach (var gen in _baseGenerators)
         {
             if (gen.CanGenerate(type))
